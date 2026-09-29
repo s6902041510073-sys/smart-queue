@@ -12,12 +12,17 @@ export async function POST(request: NextRequest) {
     }
 
     const teacher = await prisma.teacher.findUnique({
-      where: { id: teacherId },
+      where: { id: Number(teacherId) },
       include: { schedules: { orderBy: { dayOfWeek: 'asc' } } },
     })
 
-    const validPassword = password === process.env.TEACHER_PASSWORD || teacher.password === password;
-    if (!teacher || !validPassword) {
+    if (!teacher) {
+      return NextResponse.json({ success: false, error: 'รหัสผ่านไม่ถูกต้อง' }, { status: 401 })
+    }
+
+    const validPassword = password === process.env.TEACHER_PASSWORD || teacher.password === password
+
+    if (!validPassword) {
       return NextResponse.json({ success: false, error: 'รหัสผ่านไม่ถูกต้อง' }, { status: 401 })
     }
 
