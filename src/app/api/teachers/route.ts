@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 // GET: ดึงรายชื่ออาจารย์ทั้งหมดพร้อมตาราง + จำนวนคิว
 export async function GET() {
   try {
