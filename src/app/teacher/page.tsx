@@ -45,13 +45,19 @@ export default function TeacherDashboard() {
   const [password, setPassword] = useState('')
   const [authError, setAuthError] = useState('')
   
-  const [activeTab, setActiveTab] = useState<'queue' | 'schedule'>('queue')
+  const [activeTab, setActiveTab] = useState<'queue' | 'schedule' | 'profile'>('queue')
   const [queueData, setQueueData] = useState<QueueData | null>(null)
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   
+  // Schedule State
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [scheduleLoading, setScheduleLoading] = useState(false)
   const [scheduleMsg, setScheduleMsg] = useState('')
+
+  // Profile State
+  const [profileData, setProfileData] = useState({ name: '', title: '', emoji: '', newPassword: '' })
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileMsg, setProfileMsg] = useState('')
 
   useEffect(() => {
     fetch('/api/teachers').then(r => r.json()).then(d => setTeachers(d.teachers || []))
@@ -62,6 +68,7 @@ export default function TeacherDashboard() {
         setSelectedTeacher(t)
         setAuthenticated(true)
         initSchedules(t.schedules || [])
+        setProfileData({ name: t.name, title: t.title, emoji: t.emoji, newPassword: '' })
       } catch {}
     }
   }, [])
@@ -90,6 +97,7 @@ export default function TeacherDashboard() {
         setSelectedTeacher(data.teacher)
         sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data.teacher))
         initSchedules(data.teacher.schedules || [])
+        setProfileData({ name: data.teacher.name, title: data.teacher.title, emoji: data.teacher.emoji, newPassword: '' })
       } else {
         setAuthError(data.error || 'รหัสผ่านไม่ถูกต้อง')
       }
@@ -175,6 +183,42 @@ export default function TeacherDashboard() {
       setScheduleMsg('เชื่อมต่อไม่สำเร็จ')
     } finally {
       setScheduleLoading(false)
+    }
+  }
+
+  const saveProfile = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedTeacher) return
+    setProfileLoading(true)
+    setProfileMsg('')
+    try {
+      const body: any = { name: profileData.name, title: profileData.title, emoji: profileData.emoji }
+      if (profileData.newPassword) {
+        body.password = profileData.newPassword
+      }
+      
+      const res = await fetch(`/api/teachers/${selectedTeacher.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      
+      if (res.ok) {
+        const data = await res.json()
+        setSelectedTeacher(data.teacher)
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data.teacher))
+        setProfileData({ ...profileData, newPassword: '' }) // Clear password field
+        setProfileMsg('อัปเดตข้อมูลสำเร็จ')
+        // Refresh teachers list for the login screen if they logout
+        fetch('/api/teachers').then(r => r.json()).then(d => setTeachers(d.teachers || []))
+        setTimeout(() => setProfileMsg(''), 3000)
+      } else {
+        setProfileMsg('เกิดข้อผิดพลาด')
+      }
+    } catch {
+      setProfileMsg('เชื่อมต่อไม่สำเร็จ')
+    } finally {
+      setProfileLoading(false)
     }
   }
 
@@ -299,6 +343,12 @@ export default function TeacherDashboard() {
               className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'schedule' ? 'bg-white text-black shadow-md' : 'text-gray-400 hover:text-gray-200'}`}
             >
               ตั้งเวลาทำการ
+            </button>
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'profile' ? 'bg-white text-black shadow-md' : 'text-gray-400 hover:text-gray-200'}`}
+            >
+              แก้ไขโปรไฟล์
             </button>
           </div>
         </div>
@@ -449,6 +499,49 @@ export default function TeacherDashboard() {
                 {scheduleLoading ? 'กำลังบันทึก...' : 'บันทึกตารางเวลา'}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ─── TAB: แก้ไขโปรไฟล์ ─── */}
+        {activeTab === 'profile' && (
+          <div className="white-card p-8 max-w-3xl mx-auto border-t-4 border-t-orange-500">
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-gray-900 mb-2">ตั้งค่าโปรไฟล์</h2>
+              <p className="text-gray-500 text-sm font-bold">แก้ไขชื่อ รายวิชา อิโมจิ หรือเปลี่ยนรหัสผ่านของคุณ</p>
+            </div>
+            
+            <form onSubmit={saveProfile} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">ชื่ออาจารย์ <span className="text-red-500">*</span></label>
+                  <input type="text" value={profileData.name} onChange={e => setProfileData({...profileData, name: e.target.value})} className="input-clean" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">รายวิชา / ตำแหน่ง</label>
+                  <input type="text" value={profileData.title} onChange={e => setProfileData({...profileData, title: e.target.value})} className="input-clean" />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">อิโมจิประจำตัว (ใส่ได้ 1 ตัว)</label>
+                  <input type="text" value={profileData.emoji} onChange={e => setProfileData({...profileData, emoji: e.target.value})} className="input-clean text-2xl" maxLength={2} />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">ตั้งรหัสผ่านใหม่ (เว้นว่างไว้ถ้าไม่ต้องการเปลี่ยน)</label>
+                  <input type="password" value={profileData.newPassword} onChange={e => setProfileData({...profileData, newPassword: e.target.value})} placeholder="ปล่อยว่างไว้เพื่อใช้รหัสเดิม" className="input-clean" />
+                </div>
+              </div>
+
+              <div className="mt-8 pt-8 border-t border-gray-200 flex items-center justify-between">
+                <span className={`text-sm font-bold ${profileMsg === 'อัปเดตข้อมูลสำเร็จ' ? 'text-green-600' : 'text-red-500'}`}>
+                  {profileMsg}
+                </span>
+                <button type="submit" disabled={profileLoading} className="btn-primary w-auto px-8 bg-orange-600 hover:bg-orange-700 shadow-orange-500/30">
+                  {profileLoading ? 'กำลังบันทึก...' : 'บันทึกข้อมูลส่วนตัว'}
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </main>
