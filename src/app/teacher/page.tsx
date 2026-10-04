@@ -49,6 +49,10 @@ export default function TeacherDashboard() {
   const [queueData, setQueueData] = useState<QueueData | null>(null)
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   
+  // Date filter for Queue
+  const todayStr = new Date().toISOString().split('T')[0]
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr)
+
   // Schedule State
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [scheduleLoading, setScheduleLoading] = useState(false)
@@ -116,10 +120,10 @@ export default function TeacherDashboard() {
   const fetchQueueData = useCallback(async () => {
     if (!selectedTeacher) return
     try {
-      const res = await fetch(`/api/queue?teacherId=${selectedTeacher.id}`)
+      const res = await fetch(`/api/queue?teacherId=${selectedTeacher.id}&date=${selectedDate}`)
       if (res.ok) setQueueData(await res.json())
     } catch {}
-  }, [selectedTeacher])
+  }, [selectedTeacher, selectedDate])
 
   useEffect(() => {
     if (authenticated && activeTab === 'queue') {
@@ -358,6 +362,18 @@ export default function TeacherDashboard() {
         {/* ─── TAB: จัดการคิว ─── */}
         {activeTab === 'queue' && (
           <div className="space-y-8">
+            
+            <div className="flex items-center gap-4 bg-gray-900 p-4 rounded-xl border border-gray-800">
+              <span className="text-sm font-bold text-gray-300">📅 เลือกวันที่ต้องการดูคิว:</span>
+              <input 
+                type="date" 
+                value={selectedDate} 
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="bg-white text-black font-bold px-4 py-2 rounded-lg text-sm outline-none"
+              />
+              {selectedDate === todayStr && <span className="text-xs font-bold bg-green-500/20 text-green-400 px-3 py-1 rounded-full">วันนี้</span>}
+            </div>
+
             {/* สถิติ */}
             {queueData && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

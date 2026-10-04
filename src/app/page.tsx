@@ -29,6 +29,8 @@ interface QueueItem {
   studentName: string
   teacherId: number
   status: string
+  appointmentDate: string | null
+  appointmentTime: string | null
   createdAt: string
   updatedAt: string
 }
@@ -47,11 +49,17 @@ const STORAGE_KEY = 'smartqueue_booking'
 export default function StudentPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null)
+  
+  // Date/Slot Selection
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null)
+
   const [queueData, setQueueData] = useState<QueueData | null>(null)
   const [myQueueId, setMyQueueId] = useState<number | null>(null)
   const [myTeacherId, setMyTeacherId] = useState<number | null>(null)
   const [myQueue, setMyQueue] = useState<QueueItem | null>(null)
   const [position, setPosition] = useState(0)
+  
   const [studentId, setStudentId] = useState('')
   const [studentName, setStudentName] = useState('')
   const [loading, setLoading] = useState(false)
@@ -60,6 +68,7 @@ export default function StudentPage() {
   const detailRef = useRef<HTMLDivElement>(null)
 
   const today = new Date().getDay()
+  const todayStr = new Date().toISOString().split('T')[0]
   const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes()
 
   const getTodaySchedule = (t: Teacher) =>
@@ -85,7 +94,7 @@ export default function StudentPage() {
     const tid = selectedTeacher?.id ?? myTeacherId
     if (!tid) return
     try {
-      const res = await fetch(`/api/queue?teacherId=${tid}`)
+      const res = await fetch(`/api/queue?teacherId=${tid}&date=${selectedDate}`)
       if (!res.ok) return
       const data: QueueData = await res.json()
       setQueueData(data)
@@ -103,7 +112,7 @@ export default function StudentPage() {
         }
       }
     } catch {}
-  }, [selectedTeacher, myQueueId, myTeacherId])
+  }, [selectedTeacher, myQueueId, myTeacherId, selectedDate])
 
   useEffect(() => {
     try {
@@ -133,9 +142,27 @@ export default function StudentPage() {
 
   const selectTeacher = (t: Teacher) => {
     setSelectedTeacher(t)
+    setSelectedDate(todayStr)
+    setSelectedTimeSlot(null)
     setError('')
     setSuccess('')
     setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+  }
+
+  // Calculate the next upcoming date for a specific day of the week
+  const selectSlot = (dayOfWeek: number, timeStr: string) => {
+    const date = new Date()
+    const currentDay = date.getDay()
+    let distance = dayOfWeek - currentDay
+    if (distance < 0) distance += 7
+    
+    date.setDate(date.getDate() + distance)
+    const dateStr = date.toISOString().split('T')[0]
+    
+    setSelectedDate(dateStr)
+    setSelectedTimeSlot(timeStr)
+    setError('')
+    setSuccess('')
   }
 
   const handleBook = async (e: React.FormEvent) => {
@@ -148,7 +175,13 @@ export default function StudentPage() {
       const res = await fetch('/api/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, studentName, teacherId: selectedTeacher.id }),
+        body: JSON.stringify({ 
+          studentId, 
+          studentName, 
+          teacherId: selectedTeacher.id,
+          appointmentDate: selectedDate,
+          appointmentTime: selectedTimeSlot
+        }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error); return }
@@ -179,6 +212,11 @@ export default function StudentPage() {
     } catch {}
   }
 
+  const formatDateThai = (dateStr: string) => {
+    const d = new Date(dateStr)
+    return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' })
+  }
+
   return (
     <div className="min-h-screen bg-black relative font-sans pb-20">
       
@@ -189,7 +227,6 @@ export default function StudentPage() {
         ))}
       </div>
 
-      {/* ─── ส่วนหัวของเว็บ (Header) ─── */}
       <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-md border-b border-gray-800">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -242,7 +279,7 @@ export default function StudentPage() {
                       </div>
                       {(t._count?.queues ?? 0) > 0 && (
                         <div className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md inline-block">
-                          รอคิวอยู่: {t._count?.queues} คน
+                          รอคิววันนี้: {t._count?.queues} คน
                         </div>
                       )}
                     </div>
@@ -286,40 +323,44 @@ export default function StudentPage() {
                   </div>
                 </div>
                 
-                <h4 className="text-xs font-bold text-gray-400 mb-3 border-b pb-2">ตารางเวลาทั้งสัปดาห์</h4>
+                <h4 className="text-xs font-bold text-gray-400 mb-3 border-b pb-2 flex justify-between">
+                  <span>ตารางเวลาทั้งสัปดาห์</span>
+                  <span className="text-blue-500">(กดเพื่อจองคิว)</span>
+                </h4>
                 <div className="space-y-3">
                   {DAY_SHORT.map((d, i) => {
                     const daySchedules = selectedTeacher.schedules.filter((s) => s.dayOfWeek === i && s.isActive)
                     const isToday = i === today
+                    
                     return (
-                      <div key={i} className={`flex justify-between items-center p-2 rounded-lg text-xs ${isToday ? 'bg-blue-100 text-blue-800 font-bold border border-blue-200' : 'text-gray-600'}`}>
-                        <span>{d}</span>
-                        {daySchedules.length > 0 ? (
-                          <div className="text-right">
-                            {daySchedules.map((s, j) => <div key={j}>{s.startTime} - {s.endTime}</div>)}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
+                      <div key={i} className={`rounded-lg overflow-hidden border ${isToday ? 'border-blue-300' : 'border-gray-200'}`}>
+                        <div className={`p-2 text-xs font-bold ${isToday ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {d} {isToday && '(วันนี้)'}
+                        </div>
+                        <div className="p-2 space-y-2 bg-white">
+                          {daySchedules.length > 0 ? (
+                            daySchedules.map((s, j) => {
+                              const timeStr = `${s.startTime} - ${s.endTime}`
+                              const isSelected = selectedTimeSlot === timeStr && new Date(selectedDate).getDay() === i
+                              return (
+                                <button 
+                                  key={j} 
+                                  onClick={() => selectSlot(i, timeStr)}
+                                  className={`w-full text-center text-xs font-bold py-2 rounded-md transition-all ${isSelected ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'bg-gray-50 text-gray-700 hover:bg-blue-50 hover:text-blue-600 border border-gray-200'}`}
+                                >
+                                  {timeStr}
+                                </button>
+                              )
+                            })
+                          ) : (
+                            <div className="text-center text-gray-400 text-xs py-1">- ไม่มีคิว -</div>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
                 </div>
               </div>
-
-              {/* สถิติ */}
-              {queueData && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="white-card p-4 text-center">
-                    <div className="text-gray-500 text-[10px] font-bold mb-1">กำลังรอคิว</div>
-                    <div className="text-2xl font-black text-blue-600">{queueData.stats.waiting}</div>
-                  </div>
-                  <div className="white-card p-4 text-center">
-                    <div className="text-gray-500 text-[10px] font-bold mb-1">ตรวจเสร็จแล้ว</div>
-                    <div className="text-2xl font-black text-green-600">{queueData.stats.completed}</div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* คอลัมน์ขวา: การจองคิว และ คิวปัจจุบัน */}
@@ -327,9 +368,14 @@ export default function StudentPage() {
               
               {/* ป้ายแสดงคิวที่กำลังเรียก */}
               <div className="white-card p-8 border-l-4 border-l-green-500">
-                <h4 className="text-sm font-bold text-green-600 mb-6 flex items-center gap-2">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" /> คิวที่กำลังเรียกให้ไปพบ
-                </h4>
+                <div className="flex justify-between items-center mb-6">
+                  <h4 className="text-sm font-bold text-green-600 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" /> คิวที่กำลังเรียกให้ไปพบ
+                  </h4>
+                  <div className="text-xs font-bold bg-gray-100 px-3 py-1 rounded-full text-gray-600">
+                    ประจำวันที่ {formatDateThai(selectedDate)}
+                  </div>
+                </div>
                 
                 {queueData?.currentCalling ? (
                   <div className="flex flex-col md:flex-row items-center gap-8">
@@ -346,7 +392,7 @@ export default function StudentPage() {
                   </div>
                 ) : (
                   <div className="py-8 text-center text-gray-400 font-bold">
-                    ยังไม่มีการเรียกคิวในขณะนี้
+                    ยังไม่มีการเรียกคิวในขณะนี้ สำหรับวันที่เลือก
                   </div>
                 )}
               </div>
@@ -357,7 +403,10 @@ export default function StudentPage() {
                   <h4 className="text-sm font-bold text-gray-800 mb-2">
                     ตั๋วคิวของคุณ
                   </h4>
-                  <div className="text-gray-500 text-xs mb-6">รหัสนักศึกษา: {myQueue.studentId}</div>
+                  <div className="text-gray-500 text-xs mb-2">รหัสนักศึกษา: {myQueue.studentId}</div>
+                  <div className="text-blue-600 font-bold text-sm mb-6">
+                    นัดหมาย: {formatDateThai(myQueue.appointmentDate || '')} {myQueue.appointmentTime ? `เวลา ${myQueue.appointmentTime}` : ''}
+                  </div>
                   
                   <div className="text-8xl font-black text-blue-600 mb-6 drop-shadow-md">{myQueue.queueNumber}</div>
                   
@@ -379,10 +428,24 @@ export default function StudentPage() {
                   )}
                 </div>
               ) : !myQueue ? (
-                <div className="white-card p-8">
-                  <h4 className="text-lg font-bold text-gray-900 mb-6">
-                    กรอกข้อมูลเพื่อจองคิว
-                  </h4>
+                <div className="white-card p-8 relative">
+                  {!selectedTimeSlot && selectedDate !== todayStr && (
+                    <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-xl">
+                      <p className="text-xl font-bold text-gray-800 bg-white px-6 py-3 rounded-full shadow-lg border border-gray-200">👆 กรุณากดเลือกเวลาที่ต้องการจองจากตารางด้านซ้าย</p>
+                    </div>
+                  )}
+                  
+                  <div className="flex justify-between items-center mb-6">
+                    <h4 className="text-lg font-bold text-gray-900">
+                      กรอกข้อมูลเพื่อจองคิว
+                    </h4>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500 font-bold">วันที่ต้องการจอง:</div>
+                      <div className="text-sm font-bold text-blue-600">{formatDateThai(selectedDate)}</div>
+                      {selectedTimeSlot && <div className="text-xs font-bold text-blue-500 mt-1">เวลา: {selectedTimeSlot}</div>}
+                    </div>
+                  </div>
+                  
                   <form onSubmit={handleBook} className="space-y-5">
                     <div>
                       <label className="block text-sm font-bold text-gray-700 mb-2">รหัสนักศึกษา <span className="text-red-500">*</span></label>

@@ -31,13 +31,15 @@ model Schedule {
 }
 
 model Queue {
-  id          Int      @id @default(autoincrement())
-  queueNumber Int
-  studentId   String
-  studentName String   @default("")
-  teacherId   Int
-  status      String   @default("WAITING")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  id              Int      @id @default(autoincrement())
+  queueNumber     Int
+  studentId       String
+  studentName     String   @default("")
+  teacherId       Int
+  status          String   @default("WAITING")
+  appointmentDate String?  
+  appointmentTime String?  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  teacher         Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 }

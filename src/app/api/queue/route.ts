@@ -1,12 +1,16 @@
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
 
-// GET: ดึงข้อมูลคิว (filter by teacherId)
+// GET: ดึงข้อมูลคิว (filter by teacherId and date)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const teacherId = searchParams.get('teacherId')
-    const teacherFilter = teacherId ? { teacherId: parseInt(teacherId) } : {}
+    const dateStr = searchParams.get('date') || new Date().toISOString().split('T')[0]
+    
+    const teacherFilter = teacherId 
+      ? { teacherId: parseInt(teacherId), appointmentDate: dateStr } 
+      : { appointmentDate: dateStr }
 
     const queues = await prisma.queue.findMany({
       where: { ...teacherFilter, status: { in: ['WAITING', 'CALLING'] } },
@@ -47,7 +51,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { studentId, studentName, teacherId } = body
+    const { studentId, studentName, teacherId, appointmentDate, appointmentTime } = body
 
     if (!studentId || studentId.trim() === '') {
       return NextResponse.json({ error: 'กรุณากรอกรหัสนักศึกษา' }, { status: 400 })
@@ -56,21 +60,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'กรุณาเลือกอาจารย์' }, { status: 400 })
     }
 
-    // ตรวจสอบว่ามีคิวซ้ำกับอาจารย์ท่านนี้หรือไม่
+    // Default to today if no date provided
+    const todayStr = new Date().toISOString().split('T')[0]
+    const targetDate = appointmentDate || todayStr
+
+    // ตรวจสอบว่ามีคิวซ้ำกับอาจารย์ท่านนี้ในวันเดียวกันหรือไม่
     const existing = await prisma.queue.findFirst({
       where: {
         studentId: studentId.trim(),
         teacherId,
+        appointmentDate: targetDate,
         status: { in: ['WAITING', 'CALLING'] },
       },
     })
     if (existing) {
-      return NextResponse.json({ error: 'คุณมีคิวกับอาจารย์ท่านนี้อยู่แล้ว' }, { status: 400 })
+      return NextResponse.json({ error: 'คุณมีคิวกับอาจารย์ท่านนี้ในวันดังกล่าวอยู่แล้ว' }, { status: 400 })
     }
 
-    // หาเลขคิวถัดไปสำหรับอาจารย์ท่านนี้
+    // หาเลขคิวถัดไปสำหรับอาจารย์ท่านนี้ (เฉพาะวันนั้น)
     const lastQueue = await prisma.queue.findFirst({
-      where: { teacherId },
+      where: { teacherId, appointmentDate: targetDate },
       orderBy: { queueNumber: 'desc' },
     })
     const nextNumber = (lastQueue?.queueNumber ?? 0) + 1
@@ -81,12 +90,14 @@ export async function POST(request: NextRequest) {
         studentId: studentId.trim(),
         studentName: studentName?.trim() || '',
         teacherId,
+        appointmentDate: targetDate,
+        appointmentTime: appointmentTime || null,
       },
       include: { teacher: { select: { name: true, emoji: true } } },
     })
 
     const position = await prisma.queue.count({
-      where: { teacherId, status: 'WAITING', queueNumber: { lt: queue.queueNumber } },
+      where: { teacherId, appointmentDate: targetDate, status: 'WAITING', queueNumber: { lt: queue.queueNumber } },
     })
 
     return NextResponse.json({ queue, position })
